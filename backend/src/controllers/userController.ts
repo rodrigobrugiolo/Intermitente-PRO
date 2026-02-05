@@ -102,7 +102,12 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
+
+    // Se estiver atualizando a senha, fazer hash
+    if (updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
+    }
 
     const user = await User.findByIdAndUpdate(id, updates, {
       new: true,

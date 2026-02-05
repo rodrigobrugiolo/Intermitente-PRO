@@ -10,7 +10,7 @@ import {
   Shield,
   Save,
   Key,
-  Check,
+  X,
 } from "lucide-react";
 
 interface UserManagementProps {
@@ -36,12 +36,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     role: UserRole.INTERMITTENT,
   });
 
-  // Edit State
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editRole, setEditRole] = useState<UserRole>(UserRole.INTERMITTENT);
+  // Edit State - usando STRING para ID (MongoDB retorna string)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [roleInputs, setRoleInputs] = useState<{
+    [key: string]: UserRole;
+  }>({});
 
-  // Copy State
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  // Password Reset State - usando STRING para ID
+  const [resettingPasswordId, setResettingPasswordId] = useState<string | null>(
+    null,
+  );
+  const [passwordInputs, setPasswordInputs] = useState<{
+    [key: string]: string;
+  }>({});
 
   const t = getTranslation(currentLang);
 
@@ -74,22 +81,56 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     }
   };
 
-  const handleUpdateRole = async (id: number) => {
+  const handleUpdateRole = async (id: string) => {
     try {
-      await apiUpdateUser(id.toString(), { role: editRole });
+      // Impedir que o admin mude seu próprio cargo
+      if (String(id) === String(user.id)) {
+        alert("Você não pode alterar seu próprio cargo!");
+        setEditingId(null);
+        return;
+      }
+
+      const role = roleInputs[id];
+      if (!role) {
+        alert("Selecione um cargo!");
+        return;
+      }
+
+      await apiUpdateUser(id, { role });
       setEditingId(null);
+
+      // Limpar role deste usuário
+      const newInputs = { ...roleInputs };
+      delete newInputs[id];
+      setRoleInputs(newInputs);
+
       loadUsers();
     } catch (e) {
       alert("Erro ao atualizar");
     }
   };
 
-  const handleCopyResetLink = (userId: number) => {
-    // Mock link generation
-    const link = `https://app.intermittentepro.com/reset-password?uid=${userId}&token=${Math.random().toString(36).substring(7)}`;
-    navigator.clipboard.writeText(link);
-    setCopiedId(userId);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleResetPassword = async (id: string) => {
+    try {
+      const password = passwordInputs[id] || "";
+
+      if (!password || password.length < 6) {
+        alert("A senha deve ter no mínimo 6 caracteres!");
+        return;
+      }
+
+      await apiUpdateUser(id, { password });
+      setResettingPasswordId(null);
+
+      // Limpar apenas a senha deste usuário
+      const newInputs = { ...passwordInputs };
+      delete newInputs[id];
+      setPasswordInputs(newInputs);
+
+      alert("Senha alterada com sucesso!");
+    } catch (e) {
+      alert("Erro ao alterar senha");
+    }
   };
 
   const filteredUsers = users.filter(
@@ -181,11 +222,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                       {u.phone}
                     </td>
                     <td className="p-4">
-                      {editingId === u.id ? (
+                      {editingId === String(u.id) ? (
                         <select
-                          value={editRole}
+                          value={roleInputs[String(u.id)] || u.role}
                           onChange={(e) =>
-                            setEditRole(e.target.value as UserRole)
+                            setRoleInputs({
+                              ...roleInputs,
+                              [String(u.id)]: e.target.value as UserRole,
+                            })
                           }
                           className="bg-slate-100 dark:bg-slate-900 border-none rounded px-2 py-1 text-sm text-slate-700 dark:text-white"
                         >
@@ -218,16 +262,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-2">
-                        {editingId === u.id ? (
+                        {editingId === String(u.id) ? (
                           <>
                             <button
-                              onClick={() => setEditingId(null)}
+                              onClick={() => {
+                                setEditingId(null);
+                                // Limpar role deste usuário
+                                const newInputs = { ...roleInputs };
+                                delete newInputs[String(u.id)];
+                                setRoleInputs(newInputs);
+                              }}
                               className="text-slate-400 hover:text-slate-600"
                             >
                               Cancelar
                             </button>
                             <button
-                              onClick={() => handleUpdateRole(u.id)}
+                              onClick={() => handleUpdateRole(String(u.id))}
                               className="text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
                             >
                               <Save size={14} /> Salvar
@@ -235,24 +285,66 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                           </>
                         ) : (
                           <>
-                            <button
-                              onClick={() => handleCopyResetLink(u.id)}
-                              className="p-2 text-slate-400 hover:text-orange-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors relative group"
-                              title={t.copyResetLink}
-                            >
-                              {copiedId === u.id ? (
-                                <Check size={16} className="text-green-500" />
-                              ) : (
+                            {/* Alterar senha diretamente */}
+                            {resettingPasswordId === String(u.id) ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Nova senha..."
+                                  value={passwordInputs[String(u.id)] || ""}
+                                  onChange={(e) =>
+                                    setPasswordInputs({
+                                      ...passwordInputs,
+                                      [String(u.id)]: e.target.value,
+                                    })
+                                  }
+                                  className="px-2 py-1 border rounded text-sm dark:bg-slate-700 dark:border-slate-600"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() =>
+                                    handleResetPassword(String(u.id))
+                                  }
+                                  className="text-green-600 hover:text-green-700 font-medium"
+                                >
+                                  <Save size={16} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setResettingPasswordId(null);
+                                    // Limpar input deste usuário
+                                    const newInputs = { ...passwordInputs };
+                                    delete newInputs[String(u.id)];
+                                    setPasswordInputs(newInputs);
+                                  }}
+                                  className="text-slate-400 hover:text-slate-600"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  setResettingPasswordId(String(u.id))
+                                }
+                                className="p-2 text-slate-400 hover:text-orange-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors relative group"
+                                title="Alterar senha"
+                              >
                                 <Key size={16} />
-                              )}
-                            </button>
+                              </button>
+                            )}
 
+                            {/* Botão de editar cargo - aparece para todos exceto o próprio usuário logado */}
                             <button
                               onClick={() => {
-                                setEditingId(u.id);
-                                setEditRole(u.role);
+                                setEditingId(String(u.id));
+                                setRoleInputs({
+                                  ...roleInputs,
+                                  [String(u.id)]: u.role,
+                                });
                               }}
                               className="p-2 text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                              title="Editar cargo"
                             >
                               <Edit2 size={16} />
                             </button>
