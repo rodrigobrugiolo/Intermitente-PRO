@@ -53,8 +53,9 @@ app.get("/health", (req: any, res: any) => {
 app.use(errorHandler);
 
 // Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+app.listen(Number(PORT), HOST, () => {
+  console.log(`🚀 Servidor rodando em http://${HOST}:${PORT}`);
 });
 
 export default app;
